@@ -64,24 +64,28 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("startGame", ({ roomCode }) => {
-    io.to(roomCode).emit("gameStarted");
+  socket.on("startGame", ({ roomCode, scoreLimit }) => {
+    const room = rooms[roomCode];
+    if (room) {
+      room.scoreLimit = scoreLimit || 12; // ⬅️ Défaut à 12 si non précisé
+      io.to(roomCode).emit("gameStarted");
+    }
   });
 
   socket.on("skipVideo", ({ roomCode }) => {
     io.to(roomCode).emit("videoSkipped");
-  })
+  });
 
-socket.on("playVideo", ({ roomCode, videoId }) => {
-  const room = rooms[roomCode];
-  if (!room) return;
+  socket.on("playVideo", ({ roomCode, videoId }) => {
+    const room = rooms[roomCode];
+    if (!room) return;
 
-  room.currentVideo = videoId;
-  room.validatedPoints = 0; // 👈 compteur de réponses valides
-  room.validatedTypes = {}; // ← pseudo => ["titre", "artiste"]
+    room.currentVideo = videoId;
+    room.validatedPoints = 0;
+    room.validatedTypes = {};
 
-  io.to(roomCode).emit("playVideo", { videoId });
-});
+    io.to(roomCode).emit("playVideo", { videoId });
+  });
 
   socket.on("forceReveal", ({ roomCode }) => {
     io.to(roomCode).emit("revealVideo");
@@ -91,31 +95,29 @@ socket.on("playVideo", ({ roomCode, videoId }) => {
     io.to(rooms[roomCode].adminId).emit("guessReceived", { pseudo, guess });
   });
 
-socket.on("validateGuess", ({ roomCode, pseudo, guess, type }) => {
-  const room = rooms[roomCode];
-  const player = room.players.find((p) => p.pseudo === pseudo);
-  if (!player || !["titre", "artiste"].includes(type)) return;
+  socket.on("validateGuess", ({ roomCode, pseudo, guess, type }) => {
+    const room = rooms[roomCode];
+    const player = room.players.find((p) => p.pseudo === pseudo);
+    if (!player || !["titre", "artiste"].includes(type)) return;
 
-  // Vérifie si déjà validé
-  room.validatedTypes[pseudo] ||= [];
-  if (room.validatedTypes[pseudo].includes(type)) return;
+    room.validatedTypes[pseudo] ||= [];
+    if (room.validatedTypes[pseudo].includes(type)) return;
 
-  room.validatedTypes[pseudo].push(type);
-  player.score++;
-  room.validatedPoints++;
+    room.validatedTypes[pseudo].push(type);
+    player.score++;
+    room.validatedPoints++;
 
-  io.to(roomCode).emit("guessValidated", { pseudo, guess, type });
+    io.to(roomCode).emit("guessValidated", { pseudo, guess, type });
 
-  if (room.validatedPoints === 2) {
-    io.to(roomCode).emit("revealVideo");
-  }
+    if (room.validatedPoints === 2) {
+      io.to(roomCode).emit("revealVideo");
+    }
 
-  if (player.score >= 12) {
-    const winners = [...room.players].sort((a, b) => b.score - a.score);
-    io.to(roomCode).emit("endGame", { winners });
-  }
-});
-
+    if (room.scoreLimit && player.score >= room.scoreLimit) {
+      const winners = [...room.players].sort((a, b) => b.score - a.score);
+      io.to(roomCode).emit("endGame", { winners });
+    }
+  });
 
   socket.on("rejectGuess", ({ roomCode, pseudo, guess }) => {
     io.to(roomCode).emit("guessRejected", { pseudo, guess });
