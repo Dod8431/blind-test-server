@@ -64,12 +64,27 @@ app.get("/search", async (req, res) => {
       )
     ).slice(0, 10);
 
+    // Extrait un JSON embedded pour récupérer le titre
+const initialDataMatch = html.match(/ytInitialData"\s*:\s*(\{.*?\})\s*;/s);
+let titles = [];
+if (initialDataMatch) {
+  try {
+    const initialData = JSON.parse(initialDataMatch[1]);
+    // parcours sommaire pour récupérer quelques titres
+    const videoItems = initialData.contents.twoColumnSearchResultsRenderer
+      .primaryContents.sectionListRenderer.contents[0]
+      .itemSectionRenderer.contents;
+    titles = videoItems
+      .filter((item) => item.videoRenderer)
+      .map((v) => v.videoRenderer.title.runs[0].text);
+  } catch {}
+}
     // 3) Formate la réponse
-    const results = ids.map((id) => ({
-      videoId: id,
-      // On peut plus tard enrichir avec un titre en scrappant ytInitialData
-      title: `https://img.youtube.com/vi/${id}/0.jpg`
-    }));
+const results = ids.map((id, i) => ({
+  videoId: id,
+  title: titles[i] || "Titre non trouvé",
+  thumbnail: `https://img.youtube.com/vi/${id}/mqdefault.jpg`
+}));
 
     res.json(results);
   } catch (err) {
