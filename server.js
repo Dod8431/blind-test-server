@@ -2,6 +2,8 @@ const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
 const cors = require("cors");
+const fetch = require("node-fetch");
+
 
 const allowedOrigins = [
   "http://localhost:3000", // pour développement local
@@ -41,6 +43,41 @@ function generateRoomCode() {
   } while (rooms[code]);
   return code;
 }
+
+// Endpoint de recherche YouTube
+app.get("/search", async (req, res) => {
+  const q = req.query.q;
+  if (!q) return res.status(400).json({ error: "q param manquant" });
+
+  try {
+    // 1) Récupère la page de résultats
+    const response = await fetch(
+      `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`
+    );
+    const html = await response.text();
+
+    // 2) Extrait les premiers 10 videoId via regex
+    const ids = Array.from(
+      new Set(
+        // Cherche toutes les occurrences /watch?v=XXXXXXXXXXX
+        [...html.matchAll(/\/watch\?v=([a-zA-Z0-9_-]{11})/g)].map((m) => m[1])
+      )
+    ).slice(0, 10);
+
+    // 3) Formate la réponse
+    const results = ids.map((id) => ({
+      videoId: id,
+      // On peut plus tard enrichir avec un titre en scrappant ytInitialData
+      title: `https://img.youtube.com/vi/${id}/0.jpg`
+    }));
+
+    res.json(results);
+  } catch (err) {
+    console.error("Erreur search:", err);
+    res.status(500).json({ error: "Recherche échouée" });
+  }
+});
+
 
 io.on("connection", (socket) => {
   socket.on("createRoom", ({ pseudo }) => {
