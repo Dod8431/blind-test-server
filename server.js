@@ -108,13 +108,17 @@ io.on("connection", (socket) => {
     io.to(roomCode).emit("revealVideo");
   });
 
-socket.on("playerGuess", ({ roomCode, pseudo, guess }) => {
-  if (rooms[roomCode] && rooms[roomCode].adminId) {
-    io.to(rooms[roomCode].adminId).emit("guessReceived", { pseudo, guess });
+// Le client émet "sendGuess", il faut l'écouter ici
+socket.on("sendGuess", ({ roomCode, pseudo, guess }) => {
+  const room = rooms[roomCode];
+  if (room && room.adminId) {
+    // Envoie à l'admin la nouvelle réponse
+    io.to(room.adminId).emit("guessReceived", { pseudo, guess });
   } else {
     console.warn(`❌ Guess ignoré : roomCode invalide ou adminId manquant (${roomCode})`);
   }
 });
+
 
 
   socket.on("validateGuess", ({ roomCode, pseudo, guess, type }) => {
