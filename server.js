@@ -44,54 +44,51 @@ function generateRoomCode() {
   return code;
 }
 
-// Endpoint de recherche YouTube
 app.get("/search", async (req, res) => {
   const q = req.query.q;
   if (!q) return res.status(400).json({ error: "q param manquant" });
 
   try {
-    // 1) Récupère la page de résultats
     const response = await fetch(
       `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`
     );
     const html = await response.text();
 
-    // 2) Extrait les premiers 10 videoId via regex
-    const ids = Array.from(
-      new Set(
-        // Cherche toutes les occurrences /watch?v=XXXXXXXXXXX
-        [...html.matchAll(/\/watch\?v=([a-zA-Z0-9_-]{11})/g)].map((m) => m[1])
-      )
-    ).slice(0, 10);
+    // On extrait ytInitialData
+    const match = html.match(/var ytInitialData = (.*?);<\/script>/s);
+    let items = [];
+    if (match) {
+      const data = JSON.parse(match[1]);
+      const contents =
+        data.contents.twoColumnSearchResultsRenderer.primaryContents
+          .sectionListRenderer.contents;
+      // Parcours sommaire pour choper 10 vidéos max
+      for (const block of contents) {
+        const section = block.itemSectionRenderer;
+        if (!section) continue;
+        for (const item of section.contents) {
+          const v = item.videoRenderer;
+          if (v && items.length < 10) {
+            items.push({
+              videoId: v.videoId,
+              title: v.title.runs.map((r) => r.text).join(""),
+              thumbnail:
+                v.thumbnail.thumbnails[v.thumbnail.thumbnails.length - 1]
+                  .url,
+            });
+          }
+        }
+        if (items.length >= 10) break;
+      }
+    }
 
-    // Extrait un JSON embedded pour récupérer le titre
-const initialDataMatch = html.match(/ytInitialData"\s*:\s*(\{.*?\})\s*;/s);
-let titles = [];
-if (initialDataMatch) {
-  try {
-    const initialData = JSON.parse(initialDataMatch[1]);
-    // parcours sommaire pour récupérer quelques titres
-    const videoItems = initialData.contents.twoColumnSearchResultsRenderer
-      .primaryContents.sectionListRenderer.contents[0]
-      .itemSectionRenderer.contents;
-    titles = videoItems
-      .filter((item) => item.videoRenderer)
-      .map((v) => v.videoRenderer.title.runs[0].text);
-  } catch {}
-}
-    // 3) Formate la réponse
-const results = ids.map((id, i) => ({
-  videoId: id,
-  title: titles[i] || "Titre non trouvé",
-  thumbnail: `https://img.youtube.com/vi/${id}/mqdefault.jpg`
-}));
-
-    res.json(results);
+    return res.json(items);
   } catch (err) {
-    console.error("Erreur search:", err);
-    res.status(500).json({ error: "Recherche échouée" });
+    console.error("Erreur /search :", err);
+    return res.status(500).json({ error: "Recherche échouée" });
   }
 });
+
 
 
 io.on("connection", (socket) => {
