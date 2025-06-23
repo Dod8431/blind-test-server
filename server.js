@@ -72,6 +72,23 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on("restartGame", ({ roomCode }) => {
+  const room = rooms[roomCode];
+  if (!room) return;
+
+  // Reset scores
+  room.players = room.players.map((p) => ({
+    ...p,
+    score: 0,
+  }));
+
+  // Broadcast l’update à tout le monde
+  io.to(roomCode).emit("updatePlayers", room.players);
+
+  // Redémarre le jeu
+  io.to(roomCode).emit("gameStarted");
+});
+
   socket.on("skipVideo", ({ roomCode }) => {
     io.to(roomCode).emit("videoSkipped");
   });
@@ -91,9 +108,14 @@ io.on("connection", (socket) => {
     io.to(roomCode).emit("revealVideo");
   });
 
-  socket.on("sendGuess", ({ roomCode, pseudo, guess }) => {
+socket.on("playerGuess", ({ roomCode, pseudo, guess }) => {
+  if (rooms[roomCode] && rooms[roomCode].adminId) {
     io.to(rooms[roomCode].adminId).emit("guessReceived", { pseudo, guess });
-  });
+  } else {
+    console.warn(`❌ Guess ignoré : roomCode invalide ou adminId manquant (${roomCode})`);
+  }
+});
+
 
   socket.on("validateGuess", ({ roomCode, pseudo, guess, type }) => {
     const room = rooms[roomCode];
@@ -122,6 +144,13 @@ io.on("connection", (socket) => {
   socket.on("rejectGuess", ({ roomCode, pseudo, guess }) => {
     io.to(roomCode).emit("guessRejected", { pseudo, guess });
   });
+
+  socket.on("guessClose", ({ roomCode, pseudo, guess }) => {
+  const room = rooms[roomCode];
+  if (!room) return;
+
+  io.to(roomCode).emit("guessClose", { pseudo, guess });
+});
 
   socket.on("disconnect", () => {
     for (const code in rooms) {
